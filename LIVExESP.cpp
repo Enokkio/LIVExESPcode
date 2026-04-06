@@ -16,7 +16,7 @@ car_packet_t myData;          // To send
 car_packet_t incomingData;    // To receive
 volatile bool hasIncoming = false;
 uint8_t broadcastAddr[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-
+uint8_t lastSenderMac[6]; // To store the MAC of the car that just sent data
 // BLE & GNSS (Keep your existing UUIDs and Pins)
 #define RXD2 4
 #define TXD2 25
@@ -57,16 +57,18 @@ void setup() {
 }
 
 void OnDataRecv(const uint8_t * mac, const uint8_t *data, int len) {
-  memcpy(&incomingData, data, sizeof(incomingData));
-  hasIncoming = true; //use flag due to switching between EPS-NOW and BLE contexts
+  memcpy(&incomingData, data, sizeof(incomingData));  
+  memcpy(lastSenderMac, mac, 6);
+  hasIncoming = true; 
 }
 
 void loop() {
   handleWhile(); // Processes GNSS and sends MY data via ESP-NOW & BLE
 
-  // Handle data received from OTHER cars
+  // Handle data received from OTHER cars, TO BE ADDED IS CONDITION TTL, NEWEST DATA OTHERWISE WE DONT WANT TO SEND
   if (hasIncoming) {
     sendBLE(incomingData.id, incomingData.lat, incomingData.lon);
+    sendEspNowBroadcast(incomingData.lat, incomingData.lon, incomingData.id); // Re-broadcast to other cars but beware of conditions to avoid flooding the network
     hasIncoming = false;
   }
 }
@@ -77,7 +79,6 @@ void handleWhile() {
 
     char c = GNSS.read();
 
-    // Buffer the line until we hit a newline character
     if (c == '\n' || c == '\r') {
       if (gnssPos > 0) {
         gnssLine[gnssPos] = 0; // Null terminate
@@ -89,7 +90,7 @@ void handleWhile() {
           
           char* token = strtok(copy, ",");
           int field = 0;
-          
+          float utcTime = 0; // Added utcTime
           // Variables to hold the extracted data
           float rawLat = 0, rawLon = 0;
           char latDir = 'N', lonDir = 'E';
@@ -99,6 +100,7 @@ void handleWhile() {
 
           while (token != NULL) {
             switch(field) {
+              case 1: utcTime = atof(token); break; // HHMMSS.ss
               case 2: rawLat = atof(token); break;  // Latitude (DDMM.MMMM)
               case 3: latDir = token[0];    break;  // N or S
               case 4: rawLon = atof(token); break;  // Longitude (DDDMM.MMMM)
