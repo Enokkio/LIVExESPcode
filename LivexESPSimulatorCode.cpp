@@ -1,66 +1,71 @@
 #include <esp_now.h>
 #include <WiFi.h>
 
-// --- THE STRUCT MUST MATCH THE RECEIVER EXACTLY ---
+// --- THE STRUCT (Must be identical on all devices) ---
 typedef struct __attribute__((packed)) {
   float lat;
   float lon;
   uint8_t id; 
 } car_packet_t;
 
-car_packet_t myData;
-
-// Broadcast address (sends to all ESP32s on the same channel)
+car_packet_t myData;        // To send
+car_packet_t incomingData;  // To receive
+volatile bool hasIncoming = false;
 uint8_t broadcastAddr[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-// Callback to see if the message was actually sent
+// --- NEW API: SEND CALLBACK ---
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  Serial.print("\r\nLast Packet Send Status: ");
-  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+  // Useful for debugging if the radio actually fired
+}
+
+// --- NEW API: RECEIVE CALLBACK ---
+// Note the first argument is now the 'info' struct
+void OnDataRecv(const esp_now_recv_info_t * info, const uint8_t *data, int len) {
+  if (len >= sizeof(car_packet_t)) {
+    memcpy(&incomingData, data, sizeof(incomingData));
+    hasIncoming = true;
+  }
 }
 
 void setup() {
   Serial.begin(115200);
-
-  // Set device as a Wi-Fi Station
+  
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false); 
 
-  // Init ESP-NOW
   if (esp_now_init() != ESP_OK) {
-    Serial.println("Error initializing ESP-NOW");
+    Serial.println("ESP-NOW Init Failed");
     return;
   }
 
-  // Register the send callback
-  esp_now_register_send_cb(OnDataSent);
-  
-  // Register peer (Broadcast)
+  // Registering with explicit casts to satisfy the compiler
+  esp_now_register_send_cb(esp_now_send_cb_t(OnDataSent));
+  esp_now_register_recv_cb(esp_now_recv_cb_t(OnDataRecv));
+
+  // Add Broadcast Peer
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, broadcastAddr, 6);
-  peerInfo.channel = 0;  
   peerInfo.encrypt = false;
-  
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.println("Failed to add peer");
-    return;
-  }
+  esp_now_add_peer(&peerInfo);
 }
 
 void loop() {
-  // Set dummy data to send
-  myData.id = 7;             // Example Car ID
-  myData.lat = 51.5074 + ((float)random(-100, 100) / 10000.0); // Randomize slightly
-  myData.lon = -0.1278 + ((float)random(-100, 100) / 10000.0);
-
-  Serial.printf("Sending: ID %d, Lat %.6f, Lon %.6f\n", myData.id, myData.lat, myData.lon);
-
-  // Send message via ESP-NOW
-  esp_err_t result = esp_now_send(broadcastAddr, (uint8_t *) &myData, sizeof(myData));
-   
-  if (result != ESP_OK) {
-    Serial.println("Error sending the data");
+  // 1. RECEIVE LOGIC
+  if (hasIncoming) {
+    Serial.println("--- RECEIVED FROM OTHER DEVICE ---");
+    Serial.printf("ID: %d | Lat: %.6f | Lon: %.6f\n", incomingData.id, incomingData.lat, incomingData.lon);
+    hasIncoming = false;
   }
 
-  delay(2000); // Send every 2 seconds
-}
+  // 2. SEND LOGIC (Sending "Dummy" data every 3 seconds)
+  static unsigned long lastSend = 0;
+  if (millis() - lastSend > 3000) {
+    myData.id = 99; // Give this device a unique ID
+    myData.lat = 40.7128; 
+    myData.lon = -74.0060;
 
+    esp_now_send(broadcastAddr, (uint8_t *) &myData, sizeof(myData));
+    Serial.println(">> Sent my data via ESP-NOW");
+    lastSend = millis();
+  }
+}

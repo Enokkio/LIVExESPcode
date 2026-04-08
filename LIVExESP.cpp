@@ -67,7 +67,7 @@ void loop() {
 
   // Handle data received from OTHER cars, TO BE ADDED IS CONDITION TTL, NEWEST DATA OTHERWISE WE DONT WANT TO SEND
   if (hasIncoming) {
-    Serualk.println("--- RECEIVED ESP-NOW DATA ---");
+    Serial.println("--- RECEIVED ESP-NOW DATA ---");
     Serial.printf("From Car ID: %d\n", incomingData.id);
     Serial.printf("Coordinates: %.6f, %.6f\n", incomingData.lat, incomingData.lon);
     
@@ -148,7 +148,7 @@ void handleWhile() {
             static unsigned long lastMsg = 0;
               if (millis() - lastMsg > 5000) {
                   Serial.print("GPS: Waiting for Fix... Raw: ");
-                  Serial.println(gnssLine); // Show raw data to verify signal
+                  Serial.println(gnssLine);
                   lastMsg = millis();
               }
           }
@@ -174,17 +174,12 @@ void sendBLE(uint8_t id, float lat, float lon) {
   Serial.print(", Lon: "); Serial.println(lon, 6);
 }
 void sendEspNowBroadcast(float lat, float lon, uint8_t id) {
-  // 1. Pack the data into our struct "box"
   myData.lat = lat;
   myData.lon = lon;
   myData.id = id;
 
-  // 2. The actual ESP-NOW send command
-  // (uint8_t *) &myData -> converts our struct to raw bytes for the radio
-  // sizeof(myData) -> tells the radio to send exactly 9 bytes
   esp_err_t result = esp_now_send(broadcastAddr, (uint8_t *) &myData, sizeof(myData));
 
-  // 3. Optional Debugging
   if (result == ESP_OK) {
     Serial.printf("ESP-NOW Sent: ID %d, Lat %.6f\n", id, lat);
   } else {
