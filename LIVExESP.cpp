@@ -67,8 +67,12 @@ void loop() {
 
   // Handle data received from OTHER cars, TO BE ADDED IS CONDITION TTL, NEWEST DATA OTHERWISE WE DONT WANT TO SEND
   if (hasIncoming) {
+    Serualk.println("--- RECEIVED ESP-NOW DATA ---");
+    Serial.printf("From Car ID: %d\n", incomingData.id);
+    Serial.printf("Coordinates: %.6f, %.6f\n", incomingData.lat, incomingData.lon);
+    
     sendBLE(incomingData.id, incomingData.lat, incomingData.lon);
-    sendEspNowBroadcast(incomingData.lat, incomingData.lon, incomingData.id); // Re-broadcast to other cars but beware of conditions to avoid flooding the network
+    //sendEspNowBroadcast(incomingData.lat, incomingData.lon, incomingData.id); // Re-broadcast to other cars but beware of conditions to avoid flooding the network
     hasIncoming = false;
   }
 }
@@ -174,4 +178,5 @@ void sendEspNowBroadcast(float lat, float lon, uint8_t id) {
   } else {
     Serial.println("ESP-NOW Send Error");
   }
+
 }
