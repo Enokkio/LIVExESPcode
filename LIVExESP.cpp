@@ -160,7 +160,19 @@ void handleWhile() {
     }
   }
 }
+void sendBLE(uint8_t id, float lat, float lon) {
+  uint8_t buffer[9];
+  buffer[0] = id;
+  memcpy(buffer + 1, &lat, sizeof(float));
+  memcpy(buffer + 5, &lon, sizeof(float));
 
+  pCharacteristic->setValue(buffer, sizeof(buffer));
+  pCharacteristic->notify();
+
+  Serial.print("BLE sent ID "); Serial.print(id);
+  Serial.print(" -> Lat: "); Serial.print(lat, 6);
+  Serial.print(", Lon: "); Serial.println(lon, 6);
+}
 void sendEspNowBroadcast(float lat, float lon, uint8_t id) {
   // 1. Pack the data into our struct "box"
   myData.lat = lat;
