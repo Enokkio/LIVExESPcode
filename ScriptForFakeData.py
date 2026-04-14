@@ -2,12 +2,10 @@ import serial
 import time
 import math
 
-# --- CONFIGURATION ---
-SERIAL_PORT = 'COM5' 
+SERIAL_PORT = 'COM13' 
 BAUD_RATE = 115200
-CAR_ID = 20
+CAR_ID = 20 
 
-# LTH Center
 CENTER_LAT = 55.7126
 CENTER_LON = 13.2091
 RADIUS_METERS = 100
@@ -15,33 +13,39 @@ LAT_DEGREE_LEN = 111320.0
 LON_DEGREE_LEN = 40075000.0 * math.cos(math.radians(CENTER_LAT)) / 360.0
 
 try:
-    # Adding a longer timeout helps Python not "hang" if the ESP is slow
-    ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.1) 
+    ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.05) 
     time.sleep(2) 
     
     angle = 0
-    print(f"--- Connected to {SERIAL_PORT} ---")
+    print(f"--- Python Controller Active for ID {CAR_ID} ---")
     
     while True:
-        # Calculate Circle
+        # 1. Calculate Coordinates
         lat_offset = (RADIUS_METERS * math.sin(math.radians(angle))) / LAT_DEGREE_LEN
         lon_offset = (RADIUS_METERS * math.cos(math.radians(angle))) / LON_DEGREE_LEN
         
-        payload = f"{CAR_ID},{CENTER_LAT + lat_offset:.6f},{CENTER_LON + lon_offset:.6f}\n"
+        # 2. Generate HHMMSS.ss timestamp
+        # Example: 14:30:05.50 -> 14300550
+        t = time.localtime()
+        hundredths = int((time.time() % 1) * 100)
+        timestamp = (t.tm_hour * 1000000) + (t.tm_min * 10000) + (t.tm_sec * 100) + hundredths
+        
+        # 3. Set TTL
+        ttl = 2
+        
+        # 4. Create Payload: ID,LAT,LON,TIMESTAMP,TTL
+        payload = f"{CAR_ID},{CENTER_LAT + lat_offset:.6f},{CENTER_LON + lon_offset:.6f},{timestamp},{ttl}\n"
         ser.write(payload.encode('utf-8'))
 
-        # READ THE ESP32 OUTPUT (This replaces the Arduino Serial Monitor)
-        if ser.in_waiting > 0:
+        # Check for feedback from ESP32
+        while ser.in_waiting > 0:
             line = ser.readline().decode('utf-8', errors='replace').strip()
-            print(f"ESP32 Status: {line}")
+            print(f"ESP32: {line}")
         
         angle = (angle + 5) % 360
         time.sleep(0.5)
 
-except serial.SerialException:
-    print("Error: Port busy! Close Arduino Serial Monitor.")
-except KeyboardInterrupt:
-    print("Stopped.")
+except Exception as e:
+    print(f"Error: {e}")
 finally:
-    if 'ser' in locals() and ser.is_open:
-        ser.close()
+    if 'ser' in locals(): ser.close()

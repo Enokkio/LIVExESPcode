@@ -1,4 +1,5 @@
 #include <esp_now.h>
+#include <esp_wifi.h>
 #include <WiFi.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
@@ -7,10 +8,17 @@
 
 // --- ESP-NOW STRUCT ---
 typedef struct __attribute__((packed)) {
+  uint64_t mac_id;//MAC ADRESS AS UNIQUE ID
   float lat;
   float lon;
-  uint8_t id; 
+  uint32_t timestamp; // HMMSS.SS format
+  int ttl;
+
 } car_packet_t;
+
+std::unordered_map<uint64_t, car_packet_t> mac_table;
+uint64_t ESP_MAC_ID = 0;
+
 
 car_packet_t myData;          // To send
 car_packet_t incomingData;    // To receive
@@ -28,6 +36,11 @@ static int gnssPos = 0;
 void setup() {
   Serial.begin(115200);
   GNSS.begin(38400, SERIAL_8N1, RXD2, TXD2);
+  
+  //GET MAC ID AND STORE IN GLOBAL VARIABLE
+  uint8_t baseMac[6];
+  esp_err_t ret = esp_wifi_get_mac(WIFI_IF_STA, baseMac);
+  memcpy(&ESP_MAC_ID, baseMac, 6);
 
   // Initialize ESP-NOW
   WiFi.mode(WIFI_STA);
@@ -65,16 +78,44 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *data, int len) {
 void loop() {
   handleWhile(); // Processes GNSS and sends MY data via ESP-NOW & BLE
 
-  // Handle data received from OTHER cars, TO BE ADDED IS CONDITION TTL, NEWEST DATA OTHERWISE WE DONT WANT TO SEND
-  if (hasIncoming) {
-    Serial.println("--- RECEIVED ESP-NOW DATA ---");
-    Serial.printf("From Car ID: %d\n", incomingData.id);
-    Serial.printf("Coordinates: %.6f, %.6f\n", incomingData.lat, incomingData.lon);
-    
-    sendBLE(incomingData.id, incomingData.lat, incomingData.lon);
-    //sendEspNowBroadcast(incomingData.lat, incomingData.lon, incomingData.id); // Re-broadcast to other cars but beware of conditions to avoid flooding the network
-    hasIncoming = false;
-  }
+  // Handle data received from OTHER cars, 
+  handleIncomingData();
+}
+
+void handleIncomingData() {
+    if (hasIncoming == true) {
+        Serial.println("--- RECEIVED ESP-NOW DATA ---");
+        Serial.printf("From Car ID: %llu\n", incomingData.mac_id);
+        Serial.printf("Coordinates: %.6f, %.6f\n", incomingData.lat, incomingData.lon);
+        Serial.printf("TTL: %d\n", incomingData.ttl);
+        Serial.printf("Timestamp: %u\n", incomingData.timestamp);
+
+        std::unordered_map<uint64_t, car_packet_t>::iterator it = mac_table.find(incomingData.mac_id);
+
+        bool isOldData = false;
+        if (it != mac_table.end()) {
+            car_packet_t existingRecord = it->second;
+            if (incomingData.timestamp <= existingRecord.timestamp) {
+                isOldData = true;
+            }
+        }
+
+        if (incomingData.mac_id == ESP_MAC_ID || incomingData.ttl <= 0 || isOldData) {
+            Serial.println("Packet Dropped: Self-ID, Expired TTL, or Old Data.");
+            hasIncoming = false;
+            return;
+        }
+
+
+        Serial.println("Packet Accepted: Updating Map and Sending BLE.");
+        mac_table[incomingData.mac_id] = incomingData;
+        sendBLE(2, incomingData.lat, incomingData.lon);//SOME TEMPORARY NUMBER 2, BLUETOOHT END DOES NOT HANDLE MAC ADDRESS AS ID YET
+        
+        incomingData.ttl = incomingData.ttl - 1;
+        sendEspNowBroadcast(incomingData);
+
+        hasIncoming = false;
+    }
 }
 
 void handleWhile() {
@@ -131,8 +172,7 @@ void handleWhile() {
           if (lonDir == 'W') decimalLon *= -1.0;
 
           // --- OUTPUT & BROADCAST ---
-      
-
+    
           // Optional: Send to BLE using your existing helper
           if (fixQual > 0) {
           Serial.println("--- POSITIONING STATS ---");
@@ -142,9 +182,8 @@ void handleWhile() {
           Serial.print(" Fix Quality: "); Serial.println(fixQual);
           Serial.print(" Precision (HDOP): "); Serial.println(hdop);
           Serial.println("-------------------------");
-            sendBLE(0, decimalLat, decimalLon); 
-          }
-          else{
+            sendBLE(0, decimalLat, decimalLon); //NEED TO SEND ESP AS STRUCT ASWELL IN THIS FUNCTION, CURRENTLY JUST SENDING ID 0 FOR GPS DATA
+        } else {
             static unsigned long lastMsg = 0;
               if (millis() - lastMsg > 5000) {
                   Serial.print("GPS: Waiting for Fix... Raw: ");
@@ -173,17 +212,12 @@ void sendBLE(uint8_t id, float lat, float lon) {
   Serial.print(" -> Lat: "); Serial.print(lat, 6);
   Serial.print(", Lon: "); Serial.println(lon, 6);
 }
-void sendEspNowBroadcast(float lat, float lon, uint8_t id) {
-  myData.lat = lat;
-  myData.lon = lon;
-  myData.id = id;
+void sendEspNowBroadcast(car_packet_t dataToSend) {
+       esp_err_t result = esp_now_send(broadcastAddr, (uint8_t *) &dataToSend, sizeof(car_packet_t));
 
-  esp_err_t result = esp_now_send(broadcastAddr, (uint8_t *) &myData, sizeof(myData));
-
-  if (result == ESP_OK) {
-    Serial.printf("ESP-NOW Sent: ID %d, Lat %.6f\n", id, lat);
-  } else {
-    Serial.println("ESP-NOW Send Error");
-  }
-
+    if (result == ESP_OK) {
+        Serial.printf("ESP-NOW Broadcast Sent: Car %llu, TTL %d\n", dataToSend.mac_id, dataToSend.ttl);
+    } else {
+        Serial.println("ESP-NOW Send Error");
+    }
 }

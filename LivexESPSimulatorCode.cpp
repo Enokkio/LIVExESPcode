@@ -1,72 +1,111 @@
 #include <esp_now.h>
 #include <WiFi.h>
+#include <unordered_map>
 
 typedef struct __attribute__((packed)) {
+  uint64_t mac_id;
   float lat;
   float lon;
-  uint8_t id; 
+  uint32_t timestamp; 
+  int ttl;
 } car_packet_t;
 
 car_packet_t myData;        
 car_packet_t incomingData;  
 volatile bool hasIncoming = false;
+
+uint64_t ESP_MAC_ID = 0; 
+std::unordered_map<uint64_t, car_packet_t> mac_table;
 uint8_t broadcastAddr[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {}
-
-void OnDataRecv(const esp_now_recv_info_t * info, const uint8_t *data, int len) {
+void OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
   if (len >= sizeof(car_packet_t)) {
-    memcpy(&incomingData, data, sizeof(incomingData));
+    memcpy(&incomingData, data, sizeof(car_packet_t));
     hasIncoming = true;
+  }
+}
+
+void sendEspNowBroadcast(car_packet_t data) {
+  esp_now_send(broadcastAddr, (uint8_t *) &data, sizeof(car_packet_t));
+}
+
+void handleIncomingData() {
+  if (hasIncoming == true) {
+    std::unordered_map<uint64_t, car_packet_t>::iterator it = mac_table.find(incomingData.mac_id);
+
+    bool isOldData = false;
+    if (it != mac_table.end()) {
+      if (incomingData.timestamp <= it->second.timestamp) {
+        isOldData = true;
+      }
+    }
+    Serial.printf(incomingData.mac_id == ESP_MAC_ID);
+    Serial.printf(incomingData.ttl <= 0);
+    Serial.printf(isOldData);
+    if (incomingData.mac_id == ESP_MAC_ID || incomingData.ttl <= 0 || isOldData) {
+      Serial.printf("DROP | ID: %llu | TTL: %d | Old: %d\n", incomingData.mac_id, incomingData.ttl, (int)isOldData);
+      hasIncoming = false;
+      return;
+    }
+
+    mac_table[incomingData.mac_id] = incomingData;
+    Serial.printf("REC | ID: %llu | LAT: %.6f | LON: %.6f\n", incomingData.mac_id, incomingData.lat, incomingData.lon);
+
+    incomingData.ttl = incomingData.ttl - 1;
+    if (incomingData.ttl > 0) {
+      sendEspNowBroadcast(incomingData);
+    }
+
+    hasIncoming = false;
   }
 }
 
 void setup() {
   Serial.begin(115200);
   WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false); 
+  
+  // Fixed: Newer way to get MAC as uint64
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  memcpy(&ESP_MAC_ID, mac, 6);
 
-  if (esp_now_init() != ESP_OK) return;
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("ESP-NOW Init Failed");
+    return;
+  }
 
-  esp_now_register_send_cb(esp_now_send_cb_t(OnDataSent));
-  esp_now_register_recv_cb(esp_now_recv_cb_t(OnDataRecv));
+  // Fixed: Cast to required types for modern ESP32 core
+  esp_now_register_recv_cb(OnDataRecv);
 
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, broadcastAddr, 6);
+  peerInfo.channel = 0;  
   peerInfo.encrypt = false;
-  esp_now_add_peer(&peerInfo);
-
-  Serial.println("System Ready. Send data in format: ID,LAT,LON (e.g., 1,40.71,-74.00)");
+  
+  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+    Serial.println("Failed to add peer");
+  }
 }
 
 void loop() {
-  // 1. RECEIVE LOGIC (From other ESPs)
-  if (hasIncoming) {
-    Serial.printf("REC|%d|%.6f|%.6f\n", incomingData.id, incomingData.lat, incomingData.lon);
-    hasIncoming = false;
-  }
+  handleIncomingData();
 
-  // 2. LISTEN TO COM PORT (From Computer)
   if (Serial.available() > 0) {
-    // Read the incoming string until a newline
     String input = Serial.readStringUntil('\n');
     
-    // Parse the string: Expecting "ID,Lat,Lon"
-    int firstComma = input.indexOf(',');
-    int secondComma = input.indexOf(',', firstComma + 1);
+    int c1 = input.indexOf(',');
+    int c2 = input.indexOf(',', c1 + 1);
+    int c3 = input.indexOf(',', c2 + 1);
+    int c4 = input.indexOf(',', c3 + 1);
 
-    if (firstComma != -1 && secondComma != -1) {
-      myData.id = input.substring(0, firstComma).toInt();
-      myData.lat = input.substring(firstComma + 1, secondComma).toFloat();
-      myData.lon = input.substring(secondComma + 1).toFloat();
+    if (c1 != -1 && c2 != -1 && c3 != -1 && c4 != -1) {
+      myData.mac_id    = ESP_MAC_ID;
+      myData.lat       = input.substring(c1 + 1, c2).toFloat();
+      myData.lon       = input.substring(c2 + 1, c3).toFloat();
+      myData.timestamp = (uint32_t)input.substring(c3 + 1, c4).toInt();
+      myData.ttl       = input.substring(c4 + 1).toInt();
 
-      // Send the parsed data via ESP-NOW
-      esp_now_send(broadcastAddr, (uint8_t *) &myData, sizeof(myData));
-      
-      Serial.print(">> Sent to ESP-NOW: ");
-      Serial.println(input);
-    } else {
-      Serial.println("!! Invalid Format. Use: ID,Lat,Lon");
+      sendEspNowBroadcast(myData);
     }
   }
 }
