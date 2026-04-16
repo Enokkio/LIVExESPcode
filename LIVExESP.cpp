@@ -183,6 +183,13 @@ void handleWhile() {
           Serial.print(" Precision (HDOP): "); Serial.println(hdop);
           Serial.println("-------------------------");
             sendBLE(0, decimalLat, decimalLon); //NEED TO SEND ESP AS STRUCT ASWELL IN THIS FUNCTION, CURRENTLY JUST SENDING ID 0 FOR GPS DATA
+          // Prepare ESP-NOW packet
+          myData.mac_id = ESP_MAC_ID;
+          myData.lat = decimalLat;
+          myData.lon = decimalLon;
+          myData.timestamp = (uint32_t)(utcTime);
+          myData.ttl = 2;
+          sendEspNowBroadcast(myData);
         } else {
             static unsigned long lastMsg = 0;
               if (millis() - lastMsg > 5000) {

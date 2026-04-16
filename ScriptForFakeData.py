@@ -14,11 +14,13 @@ LON_DEGREE_LEN = 40075000.0 * math.cos(math.radians(CENTER_LAT)) / 360.0
 
 try:
     ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.05) 
-    time.sleep(2) 
+    time.sleep(0.1) 
     
     angle = 0
     print(f"--- Python Controller Active for ID {CAR_ID} ---")
-    
+    counter =0
+    start_time = time.time()
+
     while True:
         # 1. Calculate Coordinates
         lat_offset = (RADIUS_METERS * math.sin(math.radians(angle))) / LAT_DEGREE_LEN
@@ -36,6 +38,12 @@ try:
         # 4. Create Payload: ID,LAT,LON,TIMESTAMP,TTL
         payload = f"{CAR_ID},{CENTER_LAT + lat_offset:.6f},{CENTER_LON + lon_offset:.6f},{timestamp},{ttl}\n"
         ser.write(payload.encode('utf-8'))
+        counter += 1
+        if counter % 10 == 0:
+            print(f"Sent {counter} messages")
+            print(f"Seconds {time.time() - start_time:.2f}: {counter} messages")
+
+
 
         # Check for feedback from ESP32
         while ser.in_waiting > 0:
