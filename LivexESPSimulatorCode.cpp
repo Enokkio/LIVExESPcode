@@ -98,7 +98,6 @@ void setup() {
 }
 
 void loop() {
-  erial.println("Waiting for incoming ESP-NOW data...");
   handleIncomingData();
 
   if (Serial.available() > 0) {
