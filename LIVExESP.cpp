@@ -117,7 +117,7 @@ void handleIncomingData() {
 
         Serial.println("Packet Accepted: Updating Map and Sending BLE.");
         mac_table[incomingData.mac_id] = incomingData;
-        sendBLE(2, incomingData.lat, incomingData.lon);//SOME TEMPORARY NUMBER 2, BLUETOOHT END DOES NOT HANDLE MAC ADDRESS AS ID YET
+        sendBLE(incomingData.mac_id, incomingData.lat, incomingData.lon);//SOME TEMPORARY NUMBER 2, BLUETOOHT END DOES NOT HANDLE MAC ADDRESS AS ID YET
         
         incomingData.ttl = incomingData.ttl - 1;
         sendEspNowBroadcast(incomingData);
@@ -216,18 +216,25 @@ void handleWhile() {
     }
   }
 }
-void sendBLE(uint8_t id, float lat, float lon) {
-  uint8_t buffer[9];
-  buffer[0] = id;
-  memcpy(buffer + 1, &lat, sizeof(float));
-  memcpy(buffer + 5, &lon, sizeof(float));
+void sendBLE(uint64_t mac_id, float lat, float lon) {
+  // 8 bytes (mac_id) + 4 bytes (lat) + 4 bytes (lon) = 16 bytes
+  uint8_t buffer[16];
 
+  // Copy the 8-byte mac_id at the start
+  memcpy(buffer, &mac_id, sizeof(uint64_t));
+
+  // Copy Latitude starting at index 8
+  memcpy(buffer + 8, &lat, sizeof(float));
+
+  // Copy Longitude starting at index 12
+  memcpy(buffer + 12, &lon, sizeof(float));
+
+  // Update characteristic with the full 16-byte buffer
   pCharacteristic->setValue(buffer, sizeof(buffer));
   pCharacteristic->notify();
 
-  Serial.print("BLE sent ID "); Serial.print(id);
-  Serial.print(" -> Lat: "); Serial.print(lat, 6);
-  Serial.print(", Lon: "); Serial.println(lon, 6);
+  // Serial output for confirmation
+  Serial.printf("BLE sent MAC: %llu -> Lat: %.6f, Lon: %.6f\n", mac_id, lat, lon);
 }
 void sendEspNowBroadcast(car_packet_t dataToSend) {
        esp_err_t result = esp_now_send(broadcastAddr, (uint8_t *) &dataToSend, sizeof(car_packet_t));
