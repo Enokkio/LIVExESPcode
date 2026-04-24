@@ -13,12 +13,13 @@ typedef struct __attribute__((packed)) {
   float lon;
   uint32_t timestamp; // HMMSS.SS format
   int ttl;
+  uint32_t seqNum;
 
 } car_packet_t;
 
 std::unordered_map<uint64_t, car_packet_t> mac_table;
 uint64_t ESP_MAC_ID = 0;
-
+uint32_t globalSeqNum = 0; // Global sequence number for outgoing packets
 
 car_packet_t myData;          // To send
 car_packet_t incomingData;    // To receive
@@ -89,17 +90,24 @@ void handleIncomingData() {
         Serial.printf("Coordinates: %.6f, %.6f\n", incomingData.lat, incomingData.lon);
         Serial.printf("TTL: %d\n", incomingData.ttl);
         Serial.printf("Timestamp: %u\n", incomingData.timestamp);
+        Serial.printf("Sequence Number: %u\n", incomingData.seqNum);
+
 
         std::unordered_map<uint64_t, car_packet_t>::iterator it = mac_table.find(incomingData.mac_id);
 
         bool isOldData = false;
         if (it != mac_table.end()) {
             car_packet_t existingRecord = it->second;
-            if (incomingData.timestamp <= existingRecord.timestamp) {
+            if (incomingData.seqNum <= it->second.seqNum) {
                 isOldData = true;
             }
         }
 
+
+           Serial.printf("RAW EVAL: (ID Match: %d) (TTL <= 0: %d) (isOldData: %d)\n", 
+              (incomingData.mac_id == ESP_MAC_ID), 
+              (incomingData.ttl <= 0), 
+              isOldData);
         if (incomingData.mac_id == ESP_MAC_ID || incomingData.ttl <= 0 || isOldData) {
             Serial.println("Packet Dropped: Self-ID, Expired TTL, or Old Data.");
             hasIncoming = false;
@@ -189,6 +197,8 @@ void handleWhile() {
           myData.lon = decimalLon;
           myData.timestamp = (uint32_t)(utcTime);
           myData.ttl = 2;
+          globalSeqNum++;     // Increment global sequence number for next packet
+          myData.seqNum = globalSeqNum;
           sendEspNowBroadcast(myData);
         } else {
             static unsigned long lastMsg = 0;

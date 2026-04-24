@@ -8,11 +8,13 @@ typedef struct __attribute__((packed)) {
   float lon;
   uint32_t timestamp; 
   int ttl;
+  uint32_t seqNum;
 } car_packet_t;
 
 car_packet_t myData;        
 car_packet_t incomingData;  
 volatile bool hasIncoming = false;
+uint32_t globalSeqNum = 0; 
 
 uint64_t ESP_MAC_ID = 0; 
 std::unordered_map<uint64_t, car_packet_t> mac_table;
@@ -39,18 +41,26 @@ void handleIncomingData() {
         isOldData = true;
       }
     }
-    Serial.printf(incomingData.mac_id == ESP_MAC_ID);
-    Serial.printf(incomingData.ttl <= 0);
-    Serial.printf(isOldData);
+// Serial.printf("DEBUG | Is Me: %d | Is TTL Expired: %d | Is Old: %d\n", 
+//               (incomingData.mac_id == ESP_MAC_ID), 
+//               (incomingData.ttl <= 0), 
+//               isOldData);
     if (incomingData.mac_id == ESP_MAC_ID || incomingData.ttl <= 0 || isOldData) {
-      Serial.printf("DROP | ID: %llu | TTL: %d | Old: %d\n", incomingData.mac_id, incomingData.ttl, (int)isOldData);
-      hasIncoming = false;
+      Serial.printf("DROP | ID: %llu | TTL: %d | Old: %d | Seq: %u\n", 
+              (unsigned long long)incomingData.mac_id, 
+              incomingData.ttl, 
+              (int)isOldData, 
+              incomingData.seqNum);      
+              hasIncoming = false;
       return;
     }
 
     mac_table[incomingData.mac_id] = incomingData;
-    Serial.printf("REC | ID: %llu | LAT: %.6f | LON: %.6f\n", incomingData.mac_id, incomingData.lat, incomingData.lon);
-
+    // Serial.printf("REC | ID: %llu | LAT: %.6f | LON: %.6f | Seq: %u\n", 
+    //           (unsigned long long)incomingData.mac_id, 
+    //           incomingData.lat, 
+    //           incomingData.lon, 
+    //           incomingData.seqNum);
     incomingData.ttl = incomingData.ttl - 1;
     if (incomingData.ttl > 0) {
       sendEspNowBroadcast(incomingData);
@@ -88,6 +98,7 @@ void setup() {
 }
 
 void loop() {
+  erial.println("Waiting for incoming ESP-NOW data...");
   handleIncomingData();
 
   if (Serial.available() > 0) {
@@ -104,7 +115,8 @@ void loop() {
       myData.lon       = input.substring(c2 + 1, c3).toFloat();
       myData.timestamp = (uint32_t)input.substring(c3 + 1, c4).toInt();
       myData.ttl       = input.substring(c4 + 1).toInt();
-
+      globalSeqNum++;     // Increment global sequence number for next packet
+      myData.seqNum = globalSeqNum;
       sendEspNowBroadcast(myData);
     }
   }
