@@ -101,6 +101,7 @@ void loop() {
   handleIncomingData();
 
   if (Serial.available() > 0) {
+    Serial.println("ENTERD SERIAL.AVAILABLE");
     String input = Serial.readStringUntil('\n');
     
     int c1 = input.indexOf(',');
