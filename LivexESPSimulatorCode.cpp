@@ -37,7 +37,7 @@ void handleIncomingData() {
 
     bool isOldData = false;
     if (it != mac_table.end()) {
-      if (incomingData.timestamp <= it->second.timestamp) {
+      if (incomingData.seqNum <= it->second.seqNum) {
         isOldData = true;
       }
     }
