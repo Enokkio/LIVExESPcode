@@ -29,6 +29,7 @@ uint8_t lastSenderMac[6]; // To store the MAC of the car that just sent data
 // BLE & GNSS (Keep your existing UUIDs and Pins)
 #define RXD2 4
 #define TXD2 25
+#define LED 24
 HardwareSerial GNSS(1);
 BLECharacteristic* pCharacteristic;
 static char gnssLine[128];
@@ -37,7 +38,8 @@ static int gnssPos = 0;
 void setup() {
   Serial.begin(115200);
   GNSS.begin(38400, SERIAL_8N1, RXD2, TXD2);
-  
+  pinMode (LED, OUTPUT);
+  digitalWrite(LED,HIGH);
   //GET MAC ID AND STORE IN GLOBAL VARIABLE
   uint8_t baseMac[6];
   esp_err_t ret = esp_wifi_get_mac(WIFI_IF_STA, baseMac);
@@ -88,7 +90,7 @@ void handleIncomingData() {
         Serial.println("--- RECEIVED ESP-NOW DATA ---");
         Serial.printf("From Car ID: %llu\n", incomingData.mac_id);
         Serial.printf("Coordinates: %.6f, %.6f\n", incomingData.lat, incomingData.lon);
-        Serial.printf("TTL: %d\n", incomingData.ttl);
+        // Serial.printf("TTL: %d\n", incomingData.ttl);
         Serial.printf("Timestamp: %u\n", incomingData.timestamp);
         Serial.printf("Sequence Number: %u\n", incomingData.seqNum);
 
