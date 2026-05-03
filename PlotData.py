@@ -3,12 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker  
 
 def plot_s11_comparison(file_paths, labels=None):
-    """
-    Plots multiple S11 datasets on the same graph for comparison.
-    
-    :param file_paths: List of strings containing paths to .s1p files
-    :param labels: List of strings for the legend labels
-    """
+ 
     fig, ax = plt.subplots(figsize=(12, 7))
     
     if labels is None:
@@ -39,8 +34,7 @@ def plot_s11_comparison(file_paths, labels=None):
     plt.tight_layout()
     plt.show()
 
-# Example usage:
-# Replace 'Dipol_2.s1p' with the name of your second data file
+
 files_to_plot = [ 'Egen_GNSS.s1p','Dipol.s1p']
 display_names = ['Dipol Antenn A', 'Egen GNSS Antenna B']
 

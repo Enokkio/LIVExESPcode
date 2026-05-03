@@ -20,7 +20,7 @@ typedef struct __attribute__((packed)) {
 std::unordered_map<uint64_t, car_packet_t> mac_table;
 uint64_t ESP_MAC_ID = 0;
 uint32_t globalSeqNum = 0; // Global sequence number for outgoing packets
-
+uint32_t globalTimestamp = 0; // Global timestamp updated everytime we get GNSS data
 car_packet_t myData;          // To send
 car_packet_t incomingData;    // To receive
 volatile bool hasIncoming = false;
@@ -34,6 +34,9 @@ HardwareSerial GNSS(1);
 BLECharacteristic* pCharacteristic;
 static char gnssLine[128];
 static int gnssPos = 0;
+uint32_t lastRunTime = 0; 
+const uint32_t interval = 5000;
+
 
 void setup() {
   Serial.begin(115200);
@@ -79,10 +82,32 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *data, int len) {
 }
 
 void loop() {
+  if(globalTimestamp  - lastRunTime >= interval) {
+    lastRunTime = globalTimestamp;
+      cleanMacTable(); 
+  }
+  
   handleWhile(); // Processes GNSS and sends MY data via ESP-NOW & BLE
 
-  // Handle data received from OTHER cars, 
   handleIncomingData();
+}
+void cleanMacTable() {
+    uint32_t currentTime = globalTimestamp; 
+    std::vector<uint64_t> toRemove;
+
+    for (const auto& entry : mac_table) {
+        uint64_t mac_id = entry.first;
+        car_packet_t record = entry.second;
+
+        if (currentTime - record.timestamp > 10) {
+            toRemove.push_back(mac_id);
+        }
+    }
+
+    for (uint64_t mac_id : toRemove) {
+        mac_table.erase(mac_id);
+        Serial.printf("Removed stale record for Car ID: %llu\n", mac_id);
+    }
 }
 
 void handleIncomingData() {
@@ -110,7 +135,7 @@ void handleIncomingData() {
               (incomingData.mac_id == ESP_MAC_ID), 
               (incomingData.ttl <= 0), 
               isOldData);
-        if (incomingData.mac_id == ESP_MAC_ID || incomingData.ttl <= 0 || isOldData) {
+        if (incomingData.mac_id == ESP_MAC_ID  || isOldData || incomingData.ttl <= 0) {//Unsure which conditoin is most common for optimization
             Serial.println("Packet Dropped: Self-ID, Expired TTL, or Old Data.");
             hasIncoming = false;
             return;
@@ -192,12 +217,13 @@ void handleWhile() {
           Serial.print(" Fix Quality: "); Serial.println(fixQual);
           Serial.print(" Precision (HDOP): "); Serial.println(hdop);
           Serial.println("-------------------------");
-            sendBLE(0, decimalLat, decimalLon); //NEED TO SEND ESP AS STRUCT ASWELL IN THIS FUNCTION, CURRENTLY JUST SENDING ID 0 FOR GPS DATA
+            sendBLE(0, decimalLat, decimalLon);
           // Prepare ESP-NOW packet
           myData.mac_id = ESP_MAC_ID;
           myData.lat = decimalLat;
           myData.lon = decimalLon;
           myData.timestamp = (uint32_t)(utcTime);
+          globalTimestamp = myData.timestamp; // Update global timestamp 
           myData.ttl = 2;
           globalSeqNum++;     // Increment global sequence number for next packet
           myData.seqNum = globalSeqNum;
@@ -222,20 +248,16 @@ void sendBLE(uint64_t mac_id, float lat, float lon) {
   // 8 bytes (mac_id) + 4 bytes (lat) + 4 bytes (lon) = 16 bytes
   uint8_t buffer[16];
 
-  // Copy the 8-byte mac_id at the start
   memcpy(buffer, &mac_id, sizeof(uint64_t));
 
-  // Copy Latitude starting at index 8
   memcpy(buffer + 8, &lat, sizeof(float));
 
-  // Copy Longitude starting at index 12
   memcpy(buffer + 12, &lon, sizeof(float));
 
   // Update characteristic with the full 16-byte buffer
   pCharacteristic->setValue(buffer, sizeof(buffer));
   pCharacteristic->notify();
 
-  // Serial output for confirmation
   Serial.printf("BLE sent MAC: %llu -> Lat: %.6f, Lon: %.6f\n", mac_id, lat, lon);
 }
 void sendEspNowBroadcast(car_packet_t dataToSend) {
