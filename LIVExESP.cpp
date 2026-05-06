@@ -37,7 +37,16 @@ static int gnssPos = 0;
 uint32_t lastRunTime = 0; 
 const uint32_t interval = 5000;
 
+class MyServerCallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) {
+      Serial.println(">> Browser Connected!");
+    };
 
+    void onDisconnect(BLEServer* pServer) {
+      Serial.println(">> Browser Disconnected. Restarting Advertising...");
+      pServer->getAdvertising()->start();
+    }
+};
 void setup() {
   Serial.begin(115200);
   GNSS.begin(38400, SERIAL_8N1, RXD2, TXD2);
@@ -56,6 +65,13 @@ void setup() {
     return;
   }
 
+    uint8_t mac[6];
+    WiFi.macAddress(mac);
+    ESP_MAC_ID = 0; 
+    for (int i = 0; i < 6; i++) {
+        ((uint8_t*)&ESP_MAC_ID)[i] = mac[i];
+    }
+Serial.printf("Device initialized with ID: %llu\n", ESP_MAC_ID);
   // Neede for broadcasting
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, broadcastAddr, 6);
@@ -66,8 +82,9 @@ void setup() {
   esp_now_register_recv_cb(esp_now_recv_cb_t(OnDataRecv));
 
   // BLE Setup (Your existing code)
-  BLEDevice::init("ESP32_C5_GNSS");
+  BLEDevice::init("ESP32_C5_GNSS MOCK");
   BLEServer* pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
   BLEService* pService = pServer->createService("12345678-1234-5678-1234-56789abcdef0");
   pCharacteristic = pService->createCharacteristic("abcdefab-1234-5678-1234-abcdefabcdef", BLECharacteristic::PROPERTY_NOTIFY);
   pCharacteristic->addDescriptor(new BLE2902());
@@ -216,6 +233,8 @@ void handleWhile() {
           Serial.print(" Sats in Use: "); Serial.println(satsUsed);
           Serial.print(" Fix Quality: "); Serial.println(fixQual);
           Serial.print(" Precision (HDOP): "); Serial.println(hdop);
+          Serial.print(" SEQNUMBER: "); Serial.println(globalSeqNum);
+
           Serial.println("-------------------------");
             sendBLE(0, decimalLat, decimalLon);
           // Prepare ESP-NOW packet
