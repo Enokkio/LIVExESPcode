@@ -36,6 +36,9 @@ static char gnssLine[128];
 static int gnssPos = 0;
 uint32_t lastRunTime = 0; 
 const uint32_t interval = 5000;
+unsigned long ledOffTime = 0;
+const uint32_t ledDuration = 150; 
+bool ledActive = false;
 
 class MyServerCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
@@ -107,6 +110,11 @@ void loop() {
   handleWhile(); // Processes GNSS and sends MY data via ESP-NOW & BLE
 
   handleIncomingData();
+
+  if (ledActive && (millis() - ledOffTime >= ledDuration)) {
+        digitalWrite(LED, LOW); // Turn the Lamp OFF
+        ledActive = false;
+    }
 }
 void cleanMacTable() {
     uint32_t currentTime = globalTimestamp; 
@@ -281,6 +289,9 @@ void sendBLE(uint64_t mac_id, float lat, float lon) {
 }
 void sendEspNowBroadcast(car_packet_t dataToSend) {
        esp_err_t result = esp_now_send(broadcastAddr, (uint8_t *) &dataToSend, sizeof(car_packet_t));
+    digitalWrite(LED, HIGH); 
+    ledOffTime = millis();
+    ledActive = true;
 
     if (result == ESP_OK) {
         Serial.printf("ESP-NOW Broadcast Sent: Car %llu, TTL %d\n", dataToSend.mac_id, dataToSend.ttl);
