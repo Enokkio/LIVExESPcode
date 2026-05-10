@@ -35,7 +35,7 @@ def plot_s11_comparison(file_paths, labels=None):
     plt.show()
 
 
-files_to_plot = [ 'Egen_GNSS.s1p','Dipol.s1p']
+files_to_plot = [ 'Dipol.s1p','Egen_GNSS.s1p']
 display_names = ['Dipol Antenn A', 'Egen GNSS Antenna B']
 
 plot_s11_comparison(files_to_plot, labels=display_names)
