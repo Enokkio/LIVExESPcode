@@ -46,13 +46,12 @@ def format_polar_ax(ax):
     ax.set_rticks([-30, -20, -10, 0])
     ax.set_yticklabels(["-30dB", "-20dB", "-10dB", "0dB"], fontsize=7)
 
-# --- Filenames ---
+
 l5_0h, l5_0v = "Ant2_Hpol_1,176GHz0deg.txt.txt", "Ant2_Vpol_1,176GHz0deg.txt.txt"
 l5_90h, l5_90v = "Ant2_Hpol_1,176GHz90deg.txt.txt", "Ant2_Vpol_1,176GHz90deg.txt.txt"
 l1_0h, l1_0v = "Ant2_Hpol_1,575GHz0deg.txt.txt", "Ant2_Vpol_1,575GHz0deg.txt.txt.txt"
 l1_90h, l1_90v = "Ant2_Hpol_1,575GHz90deg.txt.txt", "Ant2_Vpol_1,575GHz90deg.txt.txt"
 
-# --- FIGURE 1: L5 Frequency ---
 fig1, axs5 = plt.subplots(1, 3, figsize=(18, 6), subplot_kw={'projection': 'polar'})
 plot_raw_component(axs5[0], l5_0h, l5_0v, "L5 (1.176 GHz) - 0° Cut")
 plot_raw_component(axs5[1], l5_90h, l5_90v, "L5 (1.176 GHz) - 90° Cut")
@@ -65,7 +64,7 @@ axs5[2].legend(loc='upper center', bbox_to_anchor=(0.5, -0.15))
 for ax in axs5: format_polar_ax(ax)
 fig1.tight_layout()
 
-# --- FIGURE 2: L1 Frequency ---
+
 fig2, axs1 = plt.subplots(1, 3, figsize=(18, 6), subplot_kw={'projection': 'polar'})
 plot_raw_component(axs1[0], l1_0h, l1_0v, "L1 (1.575 GHz) - 0° Cut")
 plot_raw_component(axs1[1], l1_90h, l1_90v, "L1 (1.575 GHz) - 90° Cut")
